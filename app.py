@@ -1,66 +1,36 @@
-import yfinance as yf
-import pandas as pd
-import matplotlib.pyplot as plt
+import os
 
-sp500 = yf.Ticker("^GSPC")
+import google_auth_oauthlib.flow
+import googleapiclient.discovery
+import googleapiclient.errors
 
-sp500 = sp500.history(period="max")
+scopes = ["https://www.googleapis.com/auth/youtube.readonly"]
 
-sp500 = sp500.drop(["Dividends","Stock Splits"], axis=1)
-sp500 = sp500[sp500.index > pd.to_datetime('2024-01-01 00:00:00-05:00').tz_convert('America/New_York')]
-sp500["Tomorrow"] = sp500["Close"].shift(-1)
+def main():
+    # Disable OAuthlib's HTTPS verification when running locally.
+    # *DO NOT* leave this option enabled in production.
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
-plt.figure(figsize=(6, 3))
-plt.plot(sp500.index, sp500["Open"], label='Close')
-plt.plot(sp500.index, sp500["Close"], label='Tomorrow', linestyle='--')
+    api_service_name = "youtube"
+    api_version = "v3"
 
-plt.xlabel('Date')
-plt.ylabel('Price')
-plt.title('S&P 500 Close Price and Tomorrow\'s Price')
-plt.legend()
-plt.grid(True)
-plt.show()
+    client_secrets_file = "secrets.json"
 
-sp500["Target"] = (sp500["Tomorrow"] > sp500["Close"]).astype(int)
-sp500
+    # Get credentials and create an API client
+    flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
+        client_secrets_file, scopes)
+    credentials = flow.run_console()
+    youtube = googleapiclient.discovery.build(
+        api_service_name, api_version, credentials=credentials)
 
-import pandas as pd
-import numpy as np
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import precision_score, recall_score, accuracy_score
-from sklearn.neural_network import MLPClassifier
+    request = youtube.search().list(
+        part="snippet",
+        maxResults=25,
+        q="surfing"
+    )
+    response = request.execute()
 
-# Split the data into training and testing sets
-train = sp500.iloc[:-100]
-test = sp500.iloc[-100:]
+    print(response)
 
-# Define the predictors
-predictors = ["Close", "Volume", "Open", "High", "Low"]
-
-# Scale the features
-scaler = StandardScaler()
-train_scaled = scaler.fit_transform(train[predictors])
-test_scaled = scaler.transform(test[predictors])
-
-# Check the distribution of the target variable
-print("Target distribution in training set:")
-print(train["Target"].value_counts())
-
-# Define the model with adjusted hyperparameters
-model = MLPClassifier(hidden_layer_sizes=(64, 32), activation='relu', solver='adam', random_state=1, max_iter=1000)
-
-# Train the model
-model.fit(train_scaled, train["Target"])
-
-# Predict and evaluate
-preds = model.predict(test_scaled)
-preds = pd.Series(preds, index=test.index)
-
-# Evaluate precision, recall, and accuracy
-precision = precision_score(test["Target"], preds)
-recall = recall_score(test["Target"], preds)
-accuracy = accuracy_score(test["Target"], preds)
-
-print("Precision Score:", precision)
-print("Recall Score:", recall)
-print("Accuracy Score:", accuracy)
+if __name__ == "__main__":
+    main()
